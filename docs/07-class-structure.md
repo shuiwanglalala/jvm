@@ -145,3 +145,12 @@ volatile 关键字 和 transient 关键字不能修饰方法，所以方法表�
 | u2   | attribute_name_index | 1                |
 | u4   | attribute_length     | 1                |
 | u1   | info                 | attribute_length |
+
+## 其他
+
+[实例分析JAVA CLASS的文件结构](https://coolshell.cn/articles/9229.html)
+
+Class文件结构采用类似C语言的结构体来存储数据的，主要有两类数据项，无符号数和表，无符号数用来表述数字，索引引用以及字符串等，比如 u1,u2,u4,u8分别代表1个字节，2个字节，4个字节，8个字节的无符号数，而表是有多个无符号数以及其它的表组成的复合结构
+
+- 属性表存在于Class文件结构的最后，字段表，方法表以及Code属性中，也就是说属性表中也可以存在属性表
+- 属性表的长度是不固定的，不同的属性，属性表的长度是不同的
