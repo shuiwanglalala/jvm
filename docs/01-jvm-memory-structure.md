@@ -12,6 +12,12 @@ Java 虚拟机的内存空间分为 5 个部分：
 
 JDK 1.8 同 JDK 1.7 比，最大的差别就是：元数据区取代了永久代。元空间的本质和永久代类似，都是对 JVM 规范中方法区的实现。不过元空间与永久代之间最大的区别在于：元数据空间并不在虚拟机中，而是使用本地内存。
 
+https://stackoverflow.com/questions/27131165/what-is-the-difference-between-permgen-and-metaspace
+
+**Metaspace by default auto increases** its size (up to what the underlying OS provides), while PermGen always has a fixed maximum size. You can set a fixed maximum for Metaspace with JVM parameters, but you cannot make PermGen auto-increase.
+
+Both of them contain the `java.lang.Class` instances and both of them suffer from [ClassLoader leaks](http://java.jiderhamn.se/2011/12/11/classloader-leaks-i-how-to-find-classloader-leaks-with-eclipse-memory-analyser-mat/). Only difference is that with Metaspace default settings, it takes longer until you notice the symptoms (since it auto increases as much as it can), i.e. you just push the problem further away without solving it
+
 ## 程序计数器（PC 寄存器）
 
 ### 程序计数器的定义
@@ -222,14 +228,21 @@ s 是一个方法内部变量，上边的代码中直接将 s 返回，这个 St
 - jvm 参数设置，`-XX:+DoEscapeAnalysis` ：开启逃逸分析 ，`-XX:-DoEscapeAnalysis` ： 关闭逃逸分析
 - 从 jdk 1.7 开始已经默认开始逃逸分析。
 
+[面试问我 Java 逃逸分析](https://zhuanlan.zhihu.com/p/69136675)
+
 ### TLAB
 
 - TLAB 的全称是 Thread Local Allocation Buffer，即线程本地分配缓存区，是属于 Eden 区的，这是一个线程专用的内存分配区域，线程私有,默认开启的（当然也不是绝对的，也要看哪种类型的虚拟机）
-
 - 堆是全局共享的, 在同一时间，可能会有多个线程在堆上申请空间，但每次的对象分配需要同步的进行（虚拟机采用 CAS 配上失败重试的方式保证更新操作的原子性）但是效率却有点下降
 - 所以用 TLAB 来避免多线程冲突，在给对象分配内存时，每个线程使用自己的 TLAB，这样可以使得线程同步，提高了对象分配的效率
 - 当然并不是所有的对象都可以在 TLAB 中分配内存成功，如果失败了就会使用加锁的机制来保持操作的原子性
 - `-XX:+UseTLAB `使用 TLAB,`-XX:+TLABSize` 设置 TLAB 大小
+
+https://stackoverflow.com/questions/43747221/what-is-a-tlab-thread-local-allocation-buffer
+
+The idea of a TLAB is to reduce the need of synchronization between threads. Using TLABs, this need is reduced as any thread has an area it can use and expect that it is the only thread using this area. Assuming that a TLAB can hold 100 objects, a thread would only need to aquire a lock for claiming more memory when allocating the 101 object. Without TLABs, this would be required for every object. The downside is of course that you potentially waste space.
+
+Large objects are typically allocated outside of a TLAB as they void the advantage of reducing the frequency of synchronized memory allocation. Some objects might not even fit inside of a TLAB.
 
 ### 四种引用方式
 

@@ -90,6 +90,8 @@ JVM 会判断此对象是否有必要执行 finalize() 方法，如果对象没�
 
 ## 垃圾收集算法
 
+[聊聊 Java的 GC机制](https://mp.weixin.qq.com/s/bHkgpznnqixDNyDKwdAbOg)
+
 学会了如何判定无效对象、无用类、废弃常量之后，剩余工作就是回收这些垃圾。常见的垃圾收集算法有以下几个：
 
 ### 标记-清除算法
