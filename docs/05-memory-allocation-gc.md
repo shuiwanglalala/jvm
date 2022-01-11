@@ -60,3 +60,28 @@ JDK 6 Update 24 之后的规则变为：
 1. **CMS GC 时出现 `promotion failed` 和 `concurrent mode failure`**
    promotion failed，就是上文所说的担保失败，而 concurrent mode failure 是在执行 CMS GC 的过程中同时有对象要放入老年代，而此时老年代空间不足造成的。
 1. **统计得到的 Minor GC 晋升到旧生代的平均大小大于老年代的剩余空间。**
+
+[Major GC和Full GC的区别是什么？触发条件呢？](https://www.zhihu.com/question/41922036/answer/93079526)
+
+## Blog
+
+[java的gc为什么要分代？](https://www.zhihu.com/question/53613423/answer/135743258)
+
+分代式GC对GC roots的定义有什么影响呢？
+
+答案是：分代式GC是一种部分收集（partial collection）的做法。在执行部分收集时，从GC堆的非收集部分指向收集部分的引用，也必须作为GC roots的一部分。
+
+具体到分两代的分代式GC来说，如果第0代叫做young gen，第1代叫做[old gen](https://www.zhihu.com/search?q=old+gen&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"answer"%2C"sourceId"%3A135743258})，那么如果有minor GC / young GC只收集young gen里的垃圾，则young gen属于“收集部分”，而old gen属于“非收集部分”，那么从old gen指向young gen的引用就必须作为minor GC / young GC的GC roots的一部分。
+
+继续具体到HotSpot VM里的分两代式GC来说，除了old gen到young gen的引用之外，有些带有弱引用语义的结构，例如说记录所有当前被加载的类的SystemDictionary、记录字符串常量引用的StringTable等，在young GC时必须要作为strong GC roots，而在收集整堆的full GC时则不会被看作strong GC roots。
+
+那么分代有什么好处？
+
+对传统的、基本的GC实现来说，由于它们在GC的整个工作过程中都要“stop-the-world”，如果能想办法缩短GC一次工作的时间长度就是件重要的事情。如果说收集整个GC堆耗时太长，那不如只收集其中的一部分？
+
+于是就有好几种不同的划分（partition）GC堆的方式来实现部分收集，而分代式GC就是这其中的一个思路。
+
+这个思路所基于的基本假设大家都很熟悉了：weak generational hypothesis——大部分对象的[生命期](https://www.zhihu.com/search?q=生命期&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"answer"%2C"sourceId"%3A135743258})很短（die young），而没有die young的对象则很可能会存活很长时间（live long）。
+
+这是对过往的很多应用行为分析之后得出的一个假设。基于这个假设，如果让新创建的对象都在young gen里创建，然后频繁收集young gen，则大部分垃圾都能在young GC中被收集掉。由于young gen的大小配置通常只占整个GC堆的较小部分，而且较高的对象死亡率（或者说较低的对象存活率）让它非常适合使用[copying算法](https://www.zhihu.com/search?q=copying算法&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"answer"%2C"sourceId"%3A135743258})来收集，这样就不但能降低单次GC的时间长度，还可以提高GC的工作效率。
+
