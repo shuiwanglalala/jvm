@@ -67,6 +67,20 @@ JDK 6 Update 24 之后的规则变为：
 
 [java的gc为什么要分代？](https://www.zhihu.com/question/53613423/answer/135743258)
 
++ 所有[Java线程](https://www.zhihu.com/search?q=Java线程&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"answer"%2C"sourceId"%3A135743258})当前活跃的栈帧里指向GC堆里的对象的引用；换句话说，当前所有正在被调用的方法的引用类型的参数/[局部变量](https://www.zhihu.com/search?q=局部变量&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"answer"%2C"sourceId"%3A135743258})/临时值。
+
++ VM的一些静态数据结构里指向GC堆里的对象的引用，例如说HotSpot VM里的Universe里有很多这样的引用。
+
++ JNI handles，包括[global handles](https://www.zhihu.com/search?q=global+handles&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"answer"%2C"sourceId"%3A135743258})和local handles
+
++ （看情况）所有当前被加载的Java类
+
++ （看情况）Java类的引用类型[静态变量](https://www.zhihu.com/search?q=静态变量&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"answer"%2C"sourceId"%3A135743258})
+
++ （看情况）Java类的运行时常量池里的引用类型常量（String或Class类型）
+
++ （看情况）String常量池（StringTable）里的引用
+
 分代式GC对GC roots的定义有什么影响呢？
 
 答案是：分代式GC是一种部分收集（partial collection）的做法。在执行部分收集时，从GC堆的非收集部分指向收集部分的引用，也必须作为GC roots的一部分。
@@ -85,3 +99,76 @@ JDK 6 Update 24 之后的规则变为：
 
 这是对过往的很多应用行为分析之后得出的一个假设。基于这个假设，如果让新创建的对象都在young gen里创建，然后频繁收集young gen，则大部分垃圾都能在young GC中被收集掉。由于young gen的大小配置通常只占整个GC堆的较小部分，而且较高的对象死亡率（或者说较低的对象存活率）让它非常适合使用[copying算法](https://www.zhihu.com/search?q=copying算法&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"answer"%2C"sourceId"%3A135743258})来收集，这样就不但能降低单次GC的时间长度，还可以提高GC的工作效率。
 
+[Major GC和Full GC的区别是什么？触发条件呢？](https://www.zhihu.com/question/41922036/answer/93079526)
+
+针对HotSpot VM的实现，它里面的GC其实准确分类只有两大种：
+
+- Partial GC：并不收集整个GC堆的模式
+
+- - Young GC：只收集young gen的GC
+  - Old GC：只收集[old gen](https://www.zhihu.com/search?q=old+gen&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"answer"%2C"sourceId"%3A93079526})的GC。只有CMS的concurrent collection是这个模式
+  - Mixed GC：收集整个young gen以及部分old gen的GC。只有G1有这个模式
+
+- Full GC：收集整个堆，包括young gen、old gen、[perm gen](https://www.zhihu.com/search?q=perm+gen&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"answer"%2C"sourceId"%3A93079526})（如果存在的话）等所有部分的模式。
+
+[YGC问题排查，又让我涨姿势了](https://mp.weixin.qq.com/s/-8xYoAkBUoavcSl69I0XJw)
+
+各个问题不错，值得反思
+
+可作为YGC时GC Root的对象包括以下几种：
+
+> 1、虚拟机栈中引用的对象
+>
+> 2、方法区中静态属性、常量引用的对象
+>
+> 3、本地方法栈中引用的对象
+>
+> 4、被Synchronized锁持有的对象
+>
+> 5、记录当前被加载类的SystemDictionary
+>
+> 6、记录字符串常量引用的StringTable
+>
+> 7、存在跨代引用的对象
+>
+> 8、和GC Root处于同一CardTable的对象
+
+针对跨代引用的情况，老年代的对象A也必须作为GC Root的一部分，但是如果每次YGC时都去扫描老年代，肯定存在效率问题。在HotSpot JVM，引入卡表（Card Table）来对跨代引用的标记进行加速
+
+[JVM垃圾回收18问](https://mp.weixin.qq.com/s/XsZUF2nBUSEJoGIA8RimJw)
+
++ young gc 触发条件是什么？
+
+大致上可以认为在年轻代的 eden 快要被占满的时候会触发 young gc。
+
+为什么要说大致上呢？因为有一些收集器的回收实现是在 full gc 前会让先执行以下 young gc。
+
+比如 Parallel Scavenge，不过有参数可以调整让其不进行 young gc。
+
+可能还有别的实现也有这种操作，不过正常情况下就当做 eden 区快满了即可。
+
+eden 快满的触发因素有两个，一个是为对象分配内存不够，一个是为 TLAB 分配内存不够。
+
++ TLAB
+
+TLAB（Thread Local Allocation Buffer），为一个线程分配的内存申请区域。
+
+这个区域只允许这一个线程申请分配对象，允许所有线程访问这块内存区域
+
+如果这块区域用完了再去申请即可。不过每次申请的大小不固定，会根据该线程启动到现在的历史信息来调整，比如这个线程一直在分配内存那么 TLAB 就大一些，如果这个线程基本上不会申请分配内存那 TLAB 就小一些
+
+还有 TLAB 只能分配小对象，大的对象还是需要在共享的 eden 区分配。
+
+所以总的来说 TLAB 是为了避免对象分配时的竞争而设计的
+
++ PLAB
+
+PLAB 即 Promotion Local Allocation Buffers。用在年轻代对象晋升到老年代时。
+
+在多线程并行执行 YGC 时，可能有很多对象需要晋升到老年代，此时老年代的指针就“热”起来了，于是搞了个 PLAB。
+
+先从老年代 freelist（空闲链表） 申请一块空间，然后在这一块空间中就可以通过指针加法（bump the pointer）来分配内存，这样对 freelist 竞争也少了，分配空间也快了
+
++ 新生代的 GC 如何避免全堆扫描？
+
+在常见的分代 GC 中就是利用记忆集来实现的，记录可能存在的老年代中有新生代的引用的对象地址，来避免全堆扫描
